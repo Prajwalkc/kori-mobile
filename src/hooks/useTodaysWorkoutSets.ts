@@ -1,12 +1,11 @@
+import { useMemo } from 'react';
 import { getWorkoutSetsByDate } from '../services/workoutService';
 import { formatLocalDateYYYYMMDD } from '../types/workout';
 import { useSupabaseQuery } from './useSupabaseQuery';
 
 export function useTodaysWorkoutSets() {
-  const today = formatLocalDateYYYYMMDD();
+  const today = useMemo(() => formatLocalDateYYYYMMDD(), []);
+  const queryFn = useMemo(() => () => getWorkoutSetsByDate(today), [today]);
   
-  return useSupabaseQuery(
-    () => getWorkoutSetsByDate(today),
-    [today]
-  );
+  return useSupabaseQuery(queryFn);
 }

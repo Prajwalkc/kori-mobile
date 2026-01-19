@@ -98,7 +98,7 @@ export async function getMostRecentWorkoutDateBefore(date: string): Promise<stri
 
 export function buildAdaptationsFromLastSets(
   lastSetsByExercise: Record<string, WorkoutSet>
-): Array<{ exerciseName: string; weight: number; reps: number }> {
+): { exerciseName: string; weight: number; reps: number }[] {
   const adaptations = Object.entries(lastSetsByExercise).map(([exerciseName, lastSet]) => ({
     exerciseName,
     weight: lastSet.weight,

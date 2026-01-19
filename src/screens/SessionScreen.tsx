@@ -33,7 +33,6 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
   const [error, setError] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isListeningYesNo, setIsListeningYesNo] = useState(false);
-  const [yesNoAttempt, setYesNoAttempt] = useState(0);
 
   const audioBusyRef = React.useRef(false);
 
@@ -180,7 +179,6 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
 
   const handleAutoYesNo = async () => {
     console.log('Starting auto yes/no flow');
-    setYesNoAttempt(0);
     
     const firstResult = await listenForYesNoOnce();
     
@@ -195,7 +193,6 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     }
     
     console.log('First attempt unclear, retrying...');
-    setYesNoAttempt(1);
     
     await runAudioTask(async () => {
       try {

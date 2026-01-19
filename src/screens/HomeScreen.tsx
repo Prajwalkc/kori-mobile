@@ -88,7 +88,7 @@ export default function HomeScreen({ onNavigate }: HomeScreenProps) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Today's Workout</Text>
+        <Text style={styles.title}>Today&apos;s Workout</Text>
 
         <View style={styles.exerciseBox}>
           {EXERCISES.map((exercise, index) => (

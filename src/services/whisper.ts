@@ -13,7 +13,7 @@ interface TranscriptionResponse {
 }
 
 export async function transcribeAudioFile(args: TranscribeArgs): Promise<string> {
-  const { uri, filename, mimeType } = args;
+  const { uri, mimeType } = args;
 
   const apiKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
   

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 interface UseSupabaseQueryResult<T> {
   data: T | null;
@@ -8,14 +8,13 @@ interface UseSupabaseQueryResult<T> {
 }
 
 export function useSupabaseQuery<T>(
-  queryFn: () => Promise<T>,
-  deps: React.DependencyList = []
+  queryFn: () => Promise<T>
 ): UseSupabaseQueryResult<T> {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -27,11 +26,11 @@ export function useSupabaseQuery<T>(
     } finally {
       setLoading(false);
     }
-  };
+  }, [queryFn]);
 
   useEffect(() => {
     fetchData();
-  }, deps);
+  }, [fetchData]);
 
   return { data, loading, error, refetch: fetchData };
 }

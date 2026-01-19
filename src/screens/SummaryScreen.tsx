@@ -44,11 +44,11 @@ export default function SummaryScreen({ onNavigate }: SummaryScreenProps) {
             </View>
 
             <Text style={styles.successMessage}>
-              Your workout's saved. I'll have your{'\n'}
+              Your workout&apos;s saved. I&apos;ll have your{'\n'}
               recommendations ready for tomorrow.
             </Text>
 
-            <Text style={styles.summaryTitle}>Today's Summary</Text>
+            <Text style={styles.summaryTitle}>Today&apos;s Summary</Text>
 
             <View style={styles.summaryBox}>
               {!todaySets || todaySets.length === 0 ? (
@@ -63,7 +63,7 @@ export default function SummaryScreen({ onNavigate }: SummaryScreenProps) {
             </View>
 
             <Text style={styles.disclaimerText}>
-              *KORI adapts your next session based on today's performance.
+              *KORI adapts your next session based on today&apos;s performance.
             </Text>
           </>
         )}
