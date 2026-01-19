@@ -93,29 +93,49 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
   const listenForYesNoOnce = async (): Promise<'yes' | 'no' | 'unknown'> => {
     const result = await runAudioTask(async () => {
       try {
-        console.log('Listening for yes/no...');
+        console.log('Listening for yes/no (30 seconds, checking every 5s)...');
         setIsListeningYesNo(true);
         
-        await startRecording();
-        await new Promise((resolve) => setTimeout(resolve, 1400));
+        const maxAttempts = 6;
+        const chunkDuration = 5000;
         
-        const audioFile = await stopRecording();
-        console.log('Yes/No recording complete, transcribing...');
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          console.log(`Yes/No attempt ${attempt + 1}/${maxAttempts}`);
+          
+          await startRecording();
+          await new Promise((resolve) => setTimeout(resolve, chunkDuration));
+          
+          const audioFile = await stopRecording();
+          console.log('Transcribing chunk...');
+          
+          try {
+            const timeoutPromise = new Promise<string>((_, reject) => {
+              setTimeout(() => reject(new Error('Chunk transcription timeout')), 10000);
+            });
+            
+            const transcript = await Promise.race([
+              transcribeAudioFile(audioFile),
+              timeoutPromise,
+            ]);
+            
+            const normalizedResult = normalizeYesNo(transcript);
+            console.log(`Chunk transcript: "${transcript}" -> ${normalizedResult}`);
+            
+            if (normalizedResult === 'yes' || normalizedResult === 'no') {
+              console.log('Yes/No detected!');
+              setIsListeningYesNo(false);
+              return normalizedResult;
+            }
+            
+            console.log('No clear yes/no, continuing to listen...');
+          } catch (err) {
+            console.warn(`Chunk ${attempt + 1} transcription failed:`, err);
+          }
+        }
         
-        const timeoutPromise = new Promise<string>((_, reject) => {
-          setTimeout(() => reject(new Error('Yes/No transcription timeout')), 15000);
-        });
-        
-        const transcript = await Promise.race([
-          transcribeAudioFile(audioFile),
-          timeoutPromise,
-        ]);
-        
-        const normalizedResult = normalizeYesNo(transcript);
-        console.log('Yes/No transcript:', transcript, '-> result:', normalizedResult);
-        
+        console.log('30 seconds elapsed without clear yes/no');
         setIsListeningYesNo(false);
-        return normalizedResult;
+        return 'unknown' as const;
       } catch (err) {
         console.error('Yes/No listen error:', err);
         setIsListeningYesNo(false);
