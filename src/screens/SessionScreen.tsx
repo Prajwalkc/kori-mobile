@@ -33,6 +33,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
   const [error, setError] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [isListeningYesNo, setIsListeningYesNo] = useState(false);
+  const [transcript, setTranscript] = useState<string>('');
 
   const audioBusyRef = React.useRef(false);
 
@@ -182,6 +183,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       });
       
       setPendingSet(null);
+      setTranscript('');
       setPhase('idle');
       console.log('PHASE -> idle (success)');
     } catch (err) {
@@ -204,6 +206,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     });
     
     setPendingSet(null);
+    setTranscript('');
     setPhase('idle');
     setError(null);
     console.log('PHASE -> idle (rejected)');
@@ -271,6 +274,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
 
   const handleTranscript = async (raw: string) => {
     console.log('=== Processing transcript:', raw);
+    setTranscript(raw);
 
     let parsed = parseSet(raw);
     
@@ -294,6 +298,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
           
           setPhase('idle');
           setPendingSet(null);
+          setTranscript('');
           return;
         }
         
@@ -317,6 +322,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
         
         setPhase('idle');
         setPendingSet(null);
+        setTranscript('');
         return;
       }
     }
@@ -362,6 +368,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     }
     
     setError(null);
+    setTranscript('');
 
     if (!isRecording) {
       await runAudioTask(async () => {
@@ -524,6 +531,13 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
           </>
         ) : null}
 
+        {transcript && (
+          <View style={styles.transcriptContainer}>
+            <Text style={styles.transcriptLabel}>Transcribed:</Text>
+            <Text style={styles.transcriptText}>&quot;{transcript}&quot;</Text>
+          </View>
+        )}
+
         {error && <Text style={styles.errorText}>{error}</Text>}
 
         <View style={styles.loggedSetsContainer}>
@@ -622,6 +636,27 @@ const styles = StyleSheet.create({
     color: colors.text.tertiary,
     marginBottom: spacing.md,
     textAlign: 'center',
+  },
+  transcriptContainer: {
+    backgroundColor: colors.background.elevated,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.border.primary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.xl,
+    width: '100%',
+    maxWidth: 460,
+  },
+  transcriptLabel: {
+    ...typography.caption,
+    color: colors.text.tertiary,
+    marginBottom: spacing.xs,
+  },
+  transcriptText: {
+    ...typography.body,
+    color: colors.text.secondary,
+    fontStyle: 'italic',
   },
   confirmationText: {
     ...typography.bodyLarge,
