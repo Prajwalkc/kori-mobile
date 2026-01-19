@@ -450,13 +450,8 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
           </>
         ) : phase === 'confirming' ? (
           <>
-            {pendingSet && (
-              <Text style={styles.confirmationText}>
-                I heard: {pendingSet.exerciseName}, {pendingSet.weight} lbs for {pendingSet.reps} reps.
-              </Text>
-            )}
-            <Text style={styles.instructionText}>
-              {isListeningYesNo ? 'Listening for yes or no...' : 'Should I log it? (Say yes or no)'}
+            <Text style={styles.confirmationText}>
+              {isListeningYesNo ? 'Listening...' : 'Processing...'}
             </Text>
           </>
         ) : phase === 'awaiting_yesno' && pendingSet ? (
@@ -491,8 +486,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
           </>
         ) : phase === 'logging' ? (
           <>
-            <Text style={styles.confirmationText}>Logging your set...</Text>
-            <Text style={styles.instructionText}>Please wait</Text>
+            <Text style={styles.confirmationText}>Logging...</Text>
           </>
         ) : null}
 
