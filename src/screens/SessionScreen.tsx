@@ -148,12 +148,8 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     return finalResult;
   };
 
-  const logSetAndConfirm = async () => {
-    console.log('logSetAndConfirm called, pendingSet:', pendingSet);
-    if (!pendingSet) {
-      console.log('No pendingSet, returning early');
-      return;
-    }
+  const logSetAndConfirm = async (setData: PendingSet) => {
+    console.log('logSetAndConfirm called, setData:', setData);
 
     try {
       console.log('PHASE -> logging');
@@ -162,15 +158,15 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       setError(null);
 
       const existingSets = (todaySets || []).filter(
-        (set) => set.exerciseName === pendingSet.exerciseName
+        (set) => set.exerciseName === setData.exerciseName
       );
       const nextSetNumber = existingSets.length + 1;
 
       await logWorkoutSet({
         date: formatLocalDateYYYYMMDD(),
-        exerciseName: pendingSet.exerciseName,
-        weight: pendingSet.weight,
-        reps: pendingSet.reps,
+        exerciseName: setData.exerciseName,
+        weight: setData.weight,
+        reps: setData.reps,
         setNumber: nextSetNumber,
         userId: null,
       });
@@ -201,7 +197,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     console.log('rejectSetAndConfirm called');
     await runAudioTask(async () => {
       try {
-        await speak('Okay, not logging it.');
+        await speak('Okay gotcha, not logged it.');
       } catch (err) {
         console.warn('TTS reject confirmation error:', err);
       }
@@ -213,8 +209,8 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     console.log('PHASE -> idle (rejected)');
   };
 
-  const handleAutoYesNo = async () => {
-    console.log('Starting auto yes/no flow');
+  const handleAutoYesNo = async (setData: PendingSet) => {
+    console.log('Starting auto yes/no flow with setData:', setData);
     
     try {
       const firstResult = await listenForYesNoOnce();
@@ -222,7 +218,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       
       if (firstResult === 'yes') {
         console.log('Calling logSetAndConfirm...');
-        await logSetAndConfirm();
+        await logSetAndConfirm(setData);
         console.log('logSetAndConfirm completed');
         return;
       }
@@ -247,7 +243,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       const secondResult = await listenForYesNoOnce();
       
       if (secondResult === 'yes') {
-        await logSetAndConfirm();
+        await logSetAndConfirm(setData);
         return;
       }
       
@@ -327,11 +323,13 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
 
     const titleCasedExercise = parsed.exerciseName.replace(/\b\w/g, (c) => c.toUpperCase());
 
-    setPendingSet({
+    const setData: PendingSet = {
       exerciseName: titleCasedExercise,
       weight: parsed.weight,
       reps: parsed.reps,
-    });
+    };
+
+    setPendingSet(setData);
 
     console.log('PHASE -> confirming');
     setPhase('confirming');
@@ -352,7 +350,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     });
 
     if (speakResult) {
-      await handleAutoYesNo();
+      await handleAutoYesNo(setData);
       console.log('=== Transcript processing complete ===');
     }
   };
@@ -417,7 +415,11 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       console.log('⚠️ Audio busy, ignoring Yes button');
       return;
     }
-    await logSetAndConfirm();
+    if (!pendingSet) {
+      console.error('handleYes: No pendingSet available');
+      return;
+    }
+    await logSetAndConfirm(pendingSet);
   };
 
   const handleNo = async () => {
