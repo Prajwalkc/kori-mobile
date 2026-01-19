@@ -143,11 +143,17 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       }
     });
     
-    return result ?? 'unknown';
+    const finalResult = result ?? 'unknown';
+    console.log('listenForYesNoOnce returning:', finalResult);
+    return finalResult;
   };
 
   const logSetAndConfirm = async () => {
-    if (!pendingSet) return;
+    console.log('logSetAndConfirm called, pendingSet:', pendingSet);
+    if (!pendingSet) {
+      console.log('No pendingSet, returning early');
+      return;
+    }
 
     try {
       console.log('PHASE -> logging');
@@ -192,6 +198,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
   };
 
   const rejectSetAndConfirm = async () => {
+    console.log('rejectSetAndConfirm called');
     await runAudioTask(async () => {
       try {
         await speak('Okay, not logging it.');
@@ -211,14 +218,19 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     
     try {
       const firstResult = await listenForYesNoOnce();
+      console.log('handleAutoYesNo received firstResult:', firstResult);
       
       if (firstResult === 'yes') {
+        console.log('Calling logSetAndConfirm...');
         await logSetAndConfirm();
+        console.log('logSetAndConfirm completed');
         return;
       }
       
       if (firstResult === 'no') {
+        console.log('Calling rejectSetAndConfirm...');
         await rejectSetAndConfirm();
+        console.log('rejectSetAndConfirm completed');
         return;
       }
       
