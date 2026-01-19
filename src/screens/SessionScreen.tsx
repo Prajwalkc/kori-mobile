@@ -122,7 +122,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
             console.log(`Chunk transcript: "${transcript}" -> ${normalizedResult}`);
             
             if (normalizedResult === 'yes' || normalizedResult === 'no') {
-              console.log('Yes/No detected!');
+              console.log('Yes/No detected!', normalizedResult);
               setIsListeningYesNo(false);
               return normalizedResult;
             }
@@ -147,7 +147,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
   };
 
   const logSetAndConfirm = async () => {
-    if (!pendingSet || !todaySets) return;
+    if (!pendingSet) return;
 
     try {
       console.log('PHASE -> logging');
@@ -155,7 +155,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       setLoading(true);
       setError(null);
 
-      const existingSets = todaySets.filter(
+      const existingSets = (todaySets || []).filter(
         (set) => set.exerciseName === pendingSet.exerciseName
       );
       const nextSetNumber = existingSets.length + 1;
