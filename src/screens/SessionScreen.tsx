@@ -331,6 +331,16 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
             }
             
             console.log('No valid set detected, continuing to listen...');
+            
+            if (attempt === 0) {
+              try {
+                stop();
+                await speak('No valid set detected. Please say something like: Leg Press 160 for 10.');
+                await new Promise(r => setTimeout(r, 300));
+              } catch (ttsErr) {
+                console.warn('TTS feedback error:', ttsErr);
+              }
+            }
           } catch (err) {
             console.warn(`Chunk ${attempt + 1} transcription failed:`, err);
           }
@@ -339,12 +349,28 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
         console.log('30 seconds elapsed without detecting valid workout set');
         setIsRecording(false);
         setError('Could not detect a workout set. Try saying: "Leg Press 160 for 10"');
+        
+        try {
+          stop();
+          await speak('Sorry, I could not detect a workout set. Please say something like: Leg Press 160 for 10 reps.');
+        } catch (ttsErr) {
+          console.warn('TTS error after failed detection:', ttsErr);
+        }
+        
         setPhase('idle');
         return null;
       } catch (err) {
         console.error('Workout set listen error:', err);
         setIsRecording(false);
         setError('Recording failed. Please try again.');
+        
+        try {
+          stop();
+          await speak('Sorry, recording failed. Please try again.');
+        } catch (ttsErr) {
+          console.warn('TTS error after recording failure:', ttsErr);
+        }
+        
         setPhase('idle');
         return null;
       }
