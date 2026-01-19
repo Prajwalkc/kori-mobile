@@ -100,15 +100,24 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
         await new Promise((resolve) => setTimeout(resolve, 1400));
         
         const audioFile = await stopRecording();
-        const transcript = await transcribeAudioFile(audioFile);
-        const normalizedResult = normalizeYesNo(transcript);
+        console.log('Yes/No recording complete, transcribing...');
         
-        console.log('Yes/No result:', normalizedResult);
+        const timeoutPromise = new Promise<string>((_, reject) => {
+          setTimeout(() => reject(new Error('Yes/No transcription timeout')), 15000);
+        });
+        
+        const transcript = await Promise.race([
+          transcribeAudioFile(audioFile),
+          timeoutPromise,
+        ]);
+        
+        const normalizedResult = normalizeYesNo(transcript);
+        console.log('Yes/No transcript:', transcript, '-> result:', normalizedResult);
+        
         setIsListeningYesNo(false);
         return normalizedResult;
       } catch (err) {
         console.error('Yes/No listen error:', err);
-        setError('Failed to capture response');
         setIsListeningYesNo(false);
         return 'unknown' as const;
       }
@@ -180,50 +189,56 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
   const handleAutoYesNo = async () => {
     console.log('Starting auto yes/no flow');
     
-    const firstResult = await listenForYesNoOnce();
-    
-    if (firstResult === 'yes') {
-      await logSetAndConfirm();
-      return;
-    }
-    
-    if (firstResult === 'no') {
-      await rejectSetAndConfirm();
-      return;
-    }
-    
-    console.log('First attempt unclear, retrying...');
-    
-    await runAudioTask(async () => {
-      try {
-        await speak('Please say yes or no.');
-      } catch (err) {
-        console.warn('TTS retry prompt error:', err);
+    try {
+      const firstResult = await listenForYesNoOnce();
+      
+      if (firstResult === 'yes') {
+        await logSetAndConfirm();
+        return;
       }
-    });
-    
-    const secondResult = await listenForYesNoOnce();
-    
-    if (secondResult === 'yes') {
-      await logSetAndConfirm();
-      return;
-    }
-    
-    if (secondResult === 'no') {
-      await rejectSetAndConfirm();
-      return;
-    }
-    
-    console.log('Both attempts unclear, showing buttons');
-    await runAudioTask(async () => {
-      try {
-        await speak("I didn't catch that. You can tap Yes or No.");
-      } catch (err) {
-        console.warn('TTS fallback error:', err);
+      
+      if (firstResult === 'no') {
+        await rejectSetAndConfirm();
+        return;
       }
-    });
-    
-    setPhase('awaiting_yesno');
+      
+      console.log('First attempt unclear, retrying...');
+      
+      await runAudioTask(async () => {
+        try {
+          await speak('Please say yes or no.');
+        } catch (err) {
+          console.warn('TTS retry prompt error:', err);
+        }
+      });
+      
+      const secondResult = await listenForYesNoOnce();
+      
+      if (secondResult === 'yes') {
+        await logSetAndConfirm();
+        return;
+      }
+      
+      if (secondResult === 'no') {
+        await rejectSetAndConfirm();
+        return;
+      }
+      
+      console.log('Both attempts unclear, showing buttons');
+      await runAudioTask(async () => {
+        try {
+          await speak("I didn't catch that. You can tap Yes or No.");
+        } catch (err) {
+          console.warn('TTS fallback error:', err);
+        }
+      });
+      
+      setPhase('awaiting_yesno');
+    } catch (err) {
+      console.error('Auto yes/no flow error:', err);
+      setError('Voice confirmation failed. Use buttons below.');
+      setPhase('awaiting_yesno');
+    }
   };
 
   const handleTranscript = async (raw: string) => {
@@ -435,10 +450,14 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
           </>
         ) : phase === 'confirming' ? (
           <>
-            <Text style={styles.confirmationText}>Confirming...</Text>
-            {isListeningYesNo && (
-              <Text style={styles.instructionText}>Listening for yes/no...</Text>
+            {pendingSet && (
+              <Text style={styles.confirmationText}>
+                I heard: {pendingSet.exerciseName}, {pendingSet.weight} lbs for {pendingSet.reps} reps.
+              </Text>
             )}
+            <Text style={styles.instructionText}>
+              {isListeningYesNo ? 'Listening for yes or no...' : 'Should I log it? (Say yes or no)'}
+            </Text>
           </>
         ) : phase === 'awaiting_yesno' && pendingSet ? (
           <>
