@@ -272,7 +272,10 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     }
   };
 
-  const listenForWorkoutSet = async () => {
+  const listenForWorkoutSet = async (): Promise<{
+    type: 'success' | 'first_failed' | 'timeout' | 'error';
+    parsed?: { exerciseName: string; weight: number; reps: number };
+  }> => {
     const result = await runAudioTask(async () => {
       try {
         console.log('Listening for workout set (30 seconds, checking every 5s)...');
@@ -327,26 +330,16 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
             if (parsed) {
               console.log('Valid workout set detected!');
               setIsRecording(false);
-              return parsed;
+              return { type: 'success' as const, parsed };
             }
             
             console.log('No valid set detected, continuing to listen...');
             
             if (attempt === 0) {
-              console.log('🔊 First attempt failed, giving voice feedback...');
+              console.log('First attempt failed, will return for voice feedback');
               setIsRecording(false);
               setPhase('idle');
-              
-              console.log('🔊 Calling stop()...');
-              stop();
-              console.log('🔊 Calling speak()...');
-              await speak("No valid set detected. Please try again. Say something like: Leg Press, 160 pounds, for 10 reps.");
-              console.log('🔊 Speak completed!');
-              await new Promise(r => setTimeout(r, 500));
-              
-              console.log('🔊 Resuming listening...');
-              setIsRecording(true);
-              setPhase('transcribing');
+              return { type: 'first_failed' as const };
             }
           } catch (err) {
             console.warn(`Chunk ${attempt + 1} transcription failed:`, err);
@@ -357,29 +350,17 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
         setIsRecording(false);
         setError('No valid set detected. Please try again.');
         setPhase('idle');
-        
-        console.log('🔊 Timeout - giving final voice feedback...');
-        stop();
-        await speak("No valid set detected after 30 seconds. Please tap again and say something like: Leg Press, 160 pounds, for 10 reps.");
-        console.log('🔊 Timeout speak completed');
-        
-        return null;
+        return { type: 'timeout' as const };
       } catch (err) {
         console.error('Workout set listen error:', err);
         setIsRecording(false);
         setError('Recording failed. Please try again.');
         setPhase('idle');
-        
-        console.log('🔊 Recording error - giving voice feedback...');
-        stop();
-        await speak("Oops, something went wrong with the recording. Let's try again.");
-        console.log('🔊 Recording error speak completed');
-        
-        return null;
+        return { type: 'error' as const };
       }
     });
     
-    return result;
+    return result || { type: 'error' as const };
   };
 
   const handleTapToSpeak = async () => {
@@ -391,52 +372,91 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     setError(null);
     setTranscript('');
     
-    const parsedSet = await listenForWorkoutSet();
+    const result = await listenForWorkoutSet();
     
-    if (parsedSet) {
-      console.log('Valid set detected, preparing confirmation...', parsedSet);
+    if (result.type === 'first_failed') {
+      console.log('🔊 First attempt failed, giving voice feedback NOW');
+      stop();
+      await speak("No valid set detected. Please try again. Say something like: Leg Press, 160 pounds, for 10 reps.");
+      await new Promise(r => setTimeout(r, 500));
       
-      await new Promise(resolve => setTimeout(resolve, 500));
+      console.log('🔊 Retrying after first failure...');
+      const retryResult = await listenForWorkoutSet();
       
-      const titleCasedExercise = parsedSet.exerciseName.replace(/\b\w/g, (c) => c.toUpperCase());
-
-      const setData: PendingSet = {
-        exerciseName: titleCasedExercise,
-        weight: parsedSet.weight,
-        reps: parsedSet.reps,
-      };
-
-      setPendingSet(setData);
-
-      console.log('PHASE -> confirming');
-      setPhase('confirming');
-
-      console.log('About to speak confirmation...');
-      const speakResult = await runAudioTask(async () => {
-        try {
-          console.log('Inside runAudioTask, about to call speak()...');
-          await speak(
-            `I heard ${titleCasedExercise}, ${parsedSet.weight} pounds for ${parsedSet.reps} reps. Should I log it?`
-          );
-          console.log('Speak completed successfully');
-          return true;
-        } catch (err) {
-          console.error('TTS confirmation error:', err);
-          setError('Speech failed');
-          setPhase('idle');
-          setPendingSet(null);
-          return false;
-        }
-      });
-
-      console.log('speakResult:', speakResult);
-      if (speakResult) {
-        console.log('Starting yes/no flow...');
-        await handleAutoYesNo(setData);
-        console.log('=== Workout set processing complete ===');
-      } else {
-        console.log('speakResult was null or false, not proceeding with yes/no');
+      if (retryResult.type === 'success' && retryResult.parsed) {
+        await processValidSet(retryResult.parsed);
+      } else if (retryResult.type === 'timeout') {
+        stop();
+        await speak("No valid set detected after 30 seconds. Please tap again and say something like: Leg Press, 160 pounds, for 10 reps.");
+      } else if (retryResult.type === 'error') {
+        stop();
+        await speak("Oops, something went wrong with the recording. Let's try again.");
       }
+      return;
+    }
+    
+    if (result.type === 'timeout') {
+      console.log('🔊 Timeout, giving voice feedback NOW');
+      stop();
+      await speak("No valid set detected after 30 seconds. Please tap again and say something like: Leg Press, 160 pounds, for 10 reps.");
+      return;
+    }
+    
+    if (result.type === 'error') {
+      console.log('🔊 Error, giving voice feedback NOW');
+      stop();
+      await speak("Oops, something went wrong with the recording. Let's try again.");
+      return;
+    }
+    
+    if (result.type === 'success' && result.parsed) {
+      await processValidSet(result.parsed);
+    }
+  };
+
+  const processValidSet = async (parsedSet: { exerciseName: string; weight: number; reps: number }) => {
+    console.log('Valid set detected, preparing confirmation...', parsedSet);
+    
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    const titleCasedExercise = parsedSet.exerciseName.replace(/\b\w/g, (c) => c.toUpperCase());
+
+    const setData: PendingSet = {
+      exerciseName: titleCasedExercise,
+      weight: parsedSet.weight,
+      reps: parsedSet.reps,
+    };
+
+    setPendingSet(setData);
+
+    console.log('PHASE -> confirming');
+    setPhase('confirming');
+
+    console.log('About to speak confirmation...');
+    const speakResult = await runAudioTask(async () => {
+      try {
+        console.log('Inside runAudioTask, about to call speak()...');
+        await speak(
+          `I heard ${titleCasedExercise}, ${parsedSet.weight} pounds for ${parsedSet.reps} reps. Should I log it?`
+        );
+        console.log('Speak completed successfully');
+        return true;
+      } catch (err) {
+        console.error('TTS confirmation error:', err);
+        setError('Speech failed');
+        setPhase('idle');
+        setPendingSet(null);
+        return false;
+      }
+    });
+
+    console.log('speakResult:', speakResult);
+    if (speakResult) {
+      console.log('Starting yes/no flow...');
+      await handleAutoYesNo(setData);
+      console.log('=== Workout set processing complete ===');
+    } else {
+      console.log('speakResult was null or false, not proceeding with yes/no');
     }
   };
 
