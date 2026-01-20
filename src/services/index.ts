@@ -4,7 +4,10 @@ export { supabase } from './supabase';
 export { isSpeaking, speak, stop } from './tts';
 export { transcribeAudioFile } from './whisper';
 export {
-    buildAdaptationsFromLastSets, getMostRecentWorkoutDate,
-    getMostRecentWorkoutDateBefore, getWorkoutSetsByDate, logWorkoutSet
+  buildAdaptationsFromLastSets, getMostRecentWorkoutDate,
+  getMostRecentWorkoutDateBefore, getWorkoutSetsByDate, logWorkoutSet
 } from './workoutService';
+export { listenForWorkoutSet } from './workoutSetListener';
+export type { ListenResult } from './workoutSetListener';
+export { listenForYesNoOnce } from './yesNoListener';
 

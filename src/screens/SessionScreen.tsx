@@ -2,15 +2,20 @@ import React, { useEffect, useState } from 'react';
 import { Animated, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useWorkoutContext } from '../contexts';
-import { useAudioLock, useKoriAnimation, useKoriSpeech, useTodaysWorkoutSets } from '../hooks';
-import { startRecording, stopRecording } from '../services/audioRecorder';
-import { extractSetFromTranscript } from '../services/setExtractor';
+import {
+    useAudioLock,
+    useKoriAnimation,
+    useKoriSpeech,
+    useTodaysWorkoutSets,
+    useWorkoutSetListener,
+    useYesNoListener,
+} from '../hooks';
+import { stopRecording } from '../services';
 import { stop } from '../services/tts';
-import { transcribeAudioFile } from '../services/whisper';
 import { logWorkoutSet } from '../services/workoutService';
 import { borderRadius, colors, spacing, typography } from '../theme';
 import { formatLocalDateYYYYMMDD } from '../types/workout';
-import { normalizeYesNo, parseWorkoutSet, toTitleCase, type ParsedWorkoutSet } from '../utils/workoutParsing';
+import { toTitleCase, type ParsedWorkoutSet } from '../utils/workoutParsing';
 
 interface SessionScreenProps {
   onNavigate: () => void;
@@ -24,12 +29,6 @@ interface PendingSet {
   reps: number;
 }
 
-type ListenResult = 
-  | { type: 'success'; parsed: ParsedWorkoutSet }
-  | { type: 'first_failed' }
-  | { type: 'timeout' }
-  | { type: 'error' };
-
 export default function SessionScreen({ onNavigate }: SessionScreenProps) {
   const { finishWorkout } = useWorkoutContext();
   const { data: todaySets, refetch: refetchSets } = useTodaysWorkoutSets();
@@ -40,73 +39,31 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
   const [pendingSet, setPendingSet] = useState<PendingSet | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isListeningYesNo, setIsListeningYesNo] = useState(false);
   const [transcript, setTranscript] = useState<string>('');
+  
+  const workoutSetListener = useWorkoutSetListener({
+    todaySets,
+    onTranscript: setTranscript,
+    onError: setError,
+  });
+  
+  const yesNoListener = useYesNoListener();
 
-  const isActive = isKoriSpeaking || isRecording || isListeningYesNo || phase !== 'idle';
+  const isActive = isKoriSpeaking || workoutSetListener.isListening || yesNoListener.isListening || phase !== 'idle';
   const koriPulseAnim = useKoriAnimation({ isActive });
 
   useEffect(() => {
     return () => {
       stop();
-      if (isRecording || isListeningYesNo) {
+      if (workoutSetListener.isListening || yesNoListener.isListening) {
         stopRecording().catch((err) => console.warn('Cleanup recording error:', err));
       }
     };
-  }, [isRecording, isListeningYesNo]);
+  }, [workoutSetListener.isListening, yesNoListener.isListening]);
 
-  const listenForYesNoOnce = async (): Promise<'yes' | 'no' | 'unknown'> => {
+  const handleListenForYesNo = async (): Promise<'yes' | 'no' | 'unknown'> => {
     const result = await runAudioTask(async () => {
-      try {
-        console.log('Listening for yes/no (9 seconds, checking every 3s)...');
-        setIsListeningYesNo(true);
-        
-        const maxAttempts = 3;
-        const chunkDuration = 3000;
-        
-        for (let attempt = 0; attempt < maxAttempts; attempt++) {
-          console.log(`Yes/No attempt ${attempt + 1}/${maxAttempts}`);
-          
-          await startRecording();
-          await new Promise((resolve) => setTimeout(resolve, chunkDuration));
-          
-          const audioFile = await stopRecording();
-          console.log('Transcribing chunk...');
-          
-          try {
-            const timeoutPromise = new Promise<string>((_, reject) => {
-              setTimeout(() => reject(new Error('Chunk transcription timeout')), 10000);
-            });
-            
-            const transcript = await Promise.race([
-              transcribeAudioFile(audioFile),
-              timeoutPromise,
-            ]);
-            
-            const normalizedResult = normalizeYesNo(transcript);
-            console.log(`Chunk transcript: "${transcript}" -> ${normalizedResult}`);
-            
-            if (normalizedResult === 'yes' || normalizedResult === 'no') {
-              console.log('Yes/No detected!', normalizedResult);
-              setIsListeningYesNo(false);
-              return normalizedResult;
-            }
-            
-            console.log('No clear yes/no, continuing to listen...');
-          } catch (err) {
-            console.warn(`Chunk ${attempt + 1} transcription failed:`, err);
-          }
-        }
-        
-        console.log('9 seconds elapsed without clear yes/no');
-        setIsListeningYesNo(false);
-        return 'unknown' as const;
-      } catch (err) {
-        console.error('Yes/No listen error:', err);
-        setIsListeningYesNo(false);
-        return 'unknown' as const;
-      }
+      return await yesNoListener.startListening();
     });
     
     return result ?? 'unknown';
@@ -186,7 +143,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     console.log('Starting auto yes/no flow with setData:', setData);
     
     try {
-      const firstResult = await listenForYesNoOnce();
+      const firstResult = await handleListenForYesNo();
       
       if (firstResult === 'yes') {
         await new Promise(r => setTimeout(r, 300));
@@ -208,7 +165,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
         }
       });
       
-      const secondResult = await listenForYesNoOnce();
+      const secondResult = await handleListenForYesNo();
       
       if (secondResult === 'yes') {
         await new Promise(r => setTimeout(r, 300));
@@ -250,120 +207,17 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     }
   };
 
-  const listenForWorkoutSet = async (): Promise<ListenResult> => {
+  const handleListenForWorkoutSet = async () => {
     const result = await runAudioTask(async () => {
-      try {
-        console.log('Listening for workout set (30 seconds, checking every 5s)...');
-        setIsRecording(true);
-        setPhase('transcribing');
-        
-        const maxAttempts = 6;
-        const chunkDuration = 5000;
-        
-        for (let attempt = 0; attempt < maxAttempts; attempt++) {
-          console.log(`Workout set listen attempt ${attempt + 1}/${maxAttempts}`);
-          
-          await startRecording();
-          await new Promise((resolve) => setTimeout(resolve, chunkDuration));
-          
-          const audioFile = await stopRecording();
-          console.log('Transcribing workout chunk...');
-          
-          try {
-            const timeoutPromise = new Promise<string>((_, reject) => {
-              setTimeout(() => reject(new Error('Chunk transcription timeout')), 10000);
-            });
-            
-            const transcript = await Promise.race([
-              transcribeAudioFile(audioFile),
-              timeoutPromise,
-            ]);
-            
-            console.log(`Chunk transcript: "${transcript}"`);
-            
-            console.log('🔍 Attempting regex parse...');
-            let parsed = parseWorkoutSet(transcript);
-            console.log('🔍 Regex parse result:', parsed);
-            
-            // Validate parsed result
-            if (parsed && (parsed.weight < 5 || parsed.weight > 1000 || parsed.reps < 1 || parsed.reps > 50)) {
-              console.log('⚠️ Regex parse invalid (weight or reps out of range), forcing LLM fallback');
-              parsed = null;
-            }
-            
-            if (!parsed) {
-              console.log('Regex parse failed, trying LLM...');
-              console.log('📊 Current todaySets:', todaySets ? todaySets.length : 'null', 'sets');
-              try {
-                let lastSet = null;
-                if (todaySets && todaySets.length > 0) {
-                  const last = todaySets.reduce((max, set) => 
-                    set.id > max.id ? set : max
-                  );
-                  lastSet = {
-                    exerciseName: last.exerciseName,
-                    weight: last.weight,
-                    reps: last.reps,
-                  };
-                  console.log('✅ lastSet extracted:', lastSet);
-                } else {
-                  console.log('⚠️ No lastSet available (todaySets empty or null)');
-                }
-                
-                console.log('🤖 Calling LLM with transcript:', transcript);
-                console.log('🤖 Calling LLM with lastSet:', lastSet);
-                const llmResult = await extractSetFromTranscript(transcript, lastSet);
-                console.log('🤖 LLM result:', llmResult);
-                
-                if (llmResult.ok) {
-                  console.log('LLM extraction success!');
-                  parsed = {
-                    exerciseName: llmResult.exerciseName,
-                    weight: llmResult.weight,
-                    reps: llmResult.reps,
-                  };
-                }
-              } catch (llmErr) {
-                console.warn('LLM extraction failed:', llmErr);
-              }
-            }
-            
-            if (parsed) {
-              console.log('Valid workout set detected!');
-              // Set transcript to the parsed/validated data (source of truth)
-              setTranscript(`${parsed.exerciseName}, ${parsed.weight} pounds, ${parsed.reps} reps`);
-              setIsRecording(false);
-              return { type: 'success' as const, parsed };
-            }
-            
-            console.log('No valid set detected, continuing to listen...');
-            
-            if (attempt === 0) {
-              console.log('First attempt failed, will return for voice feedback');
-              setIsRecording(false);
-              setPhase('idle');
-              return { type: 'first_failed' as const };
-            }
-          } catch (err) {
-            console.warn(`Chunk ${attempt + 1} transcription failed:`, err);
-          }
-        }
-        
-        console.log('30 seconds elapsed without detecting valid workout set');
-        setIsRecording(false);
-        setError('No valid set detected. Please try again.');
-        setPhase('idle');
-        return { type: 'timeout' as const };
-      } catch (err) {
-        console.error('Workout set listen error:', err);
-        setIsRecording(false);
-        setError('Recording failed. Please try again.');
-        setPhase('idle');
-        return { type: 'error' as const };
-      }
+      setPhase('transcribing');
+      return await workoutSetListener.startListening();
     });
     
-    return result || { type: 'error' as const };
+    if (result && !['success'].includes(result.type)) {
+      setPhase('idle');
+    }
+    
+    return result || { type: 'error' };
   };
 
   const handleTapToSpeak = async () => {
@@ -378,7 +232,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     
     const maxAttempts = 4;
     let attemptCount = 0;
-    let result = await listenForWorkoutSet();
+    let result = await handleListenForWorkoutSet();
     
     while (attemptCount < maxAttempts) {
       attemptCount++;
@@ -436,7 +290,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
         }
         
         await new Promise(r => setTimeout(r, 500));
-        result = await listenForWorkoutSet();
+        result = await handleListenForWorkoutSet();
       }
     }
   };
@@ -492,10 +346,9 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
   const handleFinishWorkout = async () => {
     stop();
     
-    if (isRecording) {
+    if (workoutSetListener.isListening) {
       try {
         await stopRecording();
-        setIsRecording(false);
       } catch (err) {
         console.warn('Stop recording error:', err);
       }
@@ -555,7 +408,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
         ) : phase === 'transcribing' ? (
           <>
             <Text style={styles.confirmationText}>
-              {isRecording ? 'Listening...' : 'Processing...'}
+              {workoutSetListener.isListening ? 'Listening...' : 'Processing...'}
             </Text>
             <Text style={styles.instructionText}>
               KORI will detect your workout set automatically
@@ -564,7 +417,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
         ) : phase === 'confirming' ? (
           <>
             <Text style={styles.confirmationText}>
-              {isListeningYesNo ? 'Listening...' : 'Processing...'}
+              {yesNoListener.isListening ? 'Listening...' : 'Processing...'}
             </Text>
           </>
         ) : phase === 'awaiting_yesno' && pendingSet ? (
@@ -573,7 +426,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
               I heard: {pendingSet.exerciseName}, {pendingSet.weight} lbs for {pendingSet.reps} reps.
             </Text>
 
-            {isListeningYesNo ? (
+            {yesNoListener.isListening ? (
               <Text style={styles.instructionText}>Listening for yes/no...</Text>
             ) : (
               <View style={styles.confirmationButtons}>
