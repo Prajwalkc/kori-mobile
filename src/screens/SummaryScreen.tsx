@@ -1,9 +1,10 @@
-import React from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useWorkoutContext } from '../contexts';
 import { useTodaysWorkoutSets } from '../hooks';
-import { borderRadius, colors, shadows, spacing, typography } from '../theme';
+import { speak, stop } from '../services/tts';
+import { borderRadius, colors, spacing, typography } from '../theme';
 
 interface SummaryScreenProps {
   onNavigate: () => void;
@@ -12,8 +13,56 @@ interface SummaryScreenProps {
 export default function SummaryScreen({ onNavigate }: SummaryScreenProps) {
   const { resetWorkout } = useWorkoutContext();
   const { data: todaySets, loading, error } = useTodaysWorkoutSets();
+  const [isKoriSpeaking, setIsKoriSpeaking] = useState(false);
+  const koriPulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    if (isKoriSpeaking) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(koriPulseAnim, {
+            toValue: 1.15,
+            duration: 800,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(koriPulseAnim, {
+            toValue: 1,
+            duration: 800,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      koriPulseAnim.setValue(1);
+    }
+  }, [isKoriSpeaking, koriPulseAnim]);
+
+  useEffect(() => {
+    const speakWelcome = async () => {
+      if (!loading && todaySets) {
+        await new Promise(r => setTimeout(r, 500));
+        setIsKoriSpeaking(true);
+        try {
+          await speak("Your workout is saved. I'll have recommendations for tomorrow.");
+        } catch (err) {
+          console.warn('TTS summary error:', err);
+        } finally {
+          setIsKoriSpeaking(false);
+        }
+      }
+    };
+
+    speakWelcome();
+
+    return () => {
+      stop();
+    };
+  }, [loading, todaySets]);
 
   const handleContinue = () => {
+    stop();
     resetWorkout();
     onNavigate();
   };
@@ -25,9 +74,21 @@ export default function SummaryScreen({ onNavigate }: SummaryScreenProps) {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.logoContainer}>
-          <View style={styles.logoCircle}>
-            <Text style={styles.logoText}>KORI</Text>
-          </View>
+          <Animated.View 
+            style={[
+              styles.logoCircle,
+              {
+                transform: [{ scale: koriPulseAnim }],
+                shadowOpacity: isKoriSpeaking ? 0.6 : 0.3,
+              }
+            ]}
+          >
+            <Image 
+              source={require('../../assets/images/kori.png')}
+              style={styles.logoImage}
+              resizeMode="stretch"
+            />
+          </Animated.View>
         </View>
 
         {loading ? (
@@ -99,19 +160,28 @@ const styles = StyleSheet.create({
     marginBottom: spacing['2xl'],
   },
   logoCircle: {
-    width: 180,
-    height: 180,
+    width: 160,
+    height: 160,
     borderRadius: borderRadius.full,
-    backgroundColor: colors.background.elevated,
-    borderWidth: 2,
-    borderColor: colors.border.focus,
+    backgroundColor: 'rgba(59, 130, 246, 0.05)',
     alignItems: 'center',
     justifyContent: 'center',
-    ...shadows.glow,
+    shadowColor: colors.primary,
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 8,
   },
   logoText: {
     ...typography.logo,
     color: colors.primary,
+  },
+  logoImage: {
+    width: 200,
+    height: 200,
   },
   processingText: {
     ...typography.bodyLarge,
