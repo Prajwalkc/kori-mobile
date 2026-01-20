@@ -184,13 +184,19 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
 
       await refetchSets();
       
-      await runAudioTask(async () => {
+      console.log('🔊 audioBusyRef before log speak:', audioBusyRef.current);
+      const speakResult = await runAudioTask(async () => {
         try {
+          console.log('🔊 Inside log speak task');
           await speakWithIndicator('Okay, logged.');
+          console.log('🔊 Log speak completed');
+          return true;
         } catch (err) {
           console.warn('TTS log confirmation error:', err);
+          return false;
         }
       });
+      console.log('🔊 Log speak result:', speakResult);
       
       setPendingSet(null);
       setTranscript('');
@@ -207,13 +213,21 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
 
   const rejectSetAndConfirm = async () => {
     console.log('rejectSetAndConfirm called');
-    await runAudioTask(async () => {
+    console.log('🔊 audioBusyRef before reject speak:', audioBusyRef.current);
+    
+    const speakResult = await runAudioTask(async () => {
       try {
+        console.log('🔊 Inside reject speak task');
         await speakWithIndicator('Okay, not logged.');
+        console.log('🔊 Reject speak completed');
+        return true;
       } catch (err) {
         console.warn('TTS reject confirmation error:', err);
+        return false;
       }
     });
+    
+    console.log('🔊 Reject speak result:', speakResult);
     
     setPendingSet(null);
     setTranscript('');
@@ -231,6 +245,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       
       if (firstResult === 'yes') {
         console.log('Calling logSetAndConfirm...');
+        await new Promise(r => setTimeout(r, 300));
         await logSetAndConfirm(setData);
         console.log('logSetAndConfirm completed');
         return;
@@ -238,6 +253,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       
       if (firstResult === 'no') {
         console.log('Calling rejectSetAndConfirm...');
+        await new Promise(r => setTimeout(r, 300));
         await rejectSetAndConfirm();
         console.log('rejectSetAndConfirm completed');
         return;
@@ -256,11 +272,13 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       const secondResult = await listenForYesNoOnce();
       
       if (secondResult === 'yes') {
+        await new Promise(r => setTimeout(r, 300));
         await logSetAndConfirm(setData);
         return;
       }
       
       if (secondResult === 'no') {
+        await new Promise(r => setTimeout(r, 300));
         await rejectSetAndConfirm();
         return;
       }
