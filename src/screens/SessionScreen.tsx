@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useWorkoutContext } from '../contexts';
 import { useTodaysWorkoutSets } from '../hooks';
@@ -36,6 +36,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
   const [transcript, setTranscript] = useState<string>('');
 
   const audioBusyRef = React.useRef(false);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     return () => {
@@ -46,6 +47,29 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       audioBusyRef.current = false;
     };
   }, [isRecording, isListeningYesNo]);
+
+  useEffect(() => {
+    if (isRecording || isListeningYesNo) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.15,
+            duration: 800,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 800,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      pulseAnim.setValue(1);
+    }
+  }, [isRecording, isListeningYesNo, pulseAnim]);
 
   const runAudioTask = async <T,>(task: () => Promise<T>): Promise<T | null> => {
     if (audioBusyRef.current) {
@@ -176,7 +200,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       
       await runAudioTask(async () => {
         try {
-          await speak('Thanks, logged it.');
+          await speak("Perfect! I've logged it.");
         } catch (err) {
           console.warn('TTS log confirmation error:', err);
         }
@@ -199,7 +223,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     console.log('rejectSetAndConfirm called');
     await runAudioTask(async () => {
       try {
-        await speak('Okay gotcha, not logged it.');
+        await speak("No problem! Let's skip that one.");
       } catch (err) {
         console.warn('TTS reject confirmation error:', err);
       }
@@ -237,7 +261,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       
       await runAudioTask(async () => {
         try {
-          await speak('Please say yes or no.');
+          await speak("Sorry, I didn't catch that. Say yes or no.");
         } catch (err) {
           console.warn('TTS retry prompt error:', err);
         }
@@ -258,7 +282,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       console.log('Both attempts unclear, showing buttons');
       await runAudioTask(async () => {
         try {
-          await speak("I didn't catch that. You can tap Yes or No.");
+          await speak("Hmm, I'm not sure. Go ahead and tap Yes or No on the screen.");
         } catch (err) {
           console.warn('TTS fallback error:', err);
         }
@@ -272,7 +296,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     }
   };
 
-  const listenForWorkoutSet = async () => {
+  const listenForWorkoutSet = async (): Promise<{ parsed?: { exerciseName: string; weight: number; reps: number }; error?: 'first_attempt_failed' | 'timeout' | 'recording_error' }> => {
     const result = await runAudioTask(async () => {
       try {
         console.log('Listening for workout set (30 seconds, checking every 5s)...');
@@ -327,19 +351,16 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
             if (parsed) {
               console.log('Valid workout set detected!');
               setIsRecording(false);
-              return parsed;
+              return { parsed };
             }
             
             console.log('No valid set detected, continuing to listen...');
             
             if (attempt === 0) {
-              try {
-                stop();
-                await speak('No valid set detected. Please say something like: Leg Press 160 for 10.');
-                await new Promise(r => setTimeout(r, 300));
-              } catch (ttsErr) {
-                console.warn('TTS feedback error:', ttsErr);
-              }
+              console.log('First attempt failed, will give voice feedback...');
+              setIsRecording(false);
+              setPhase('idle');
+              return { error: 'first_attempt_failed' as const };
             }
           } catch (err) {
             console.warn(`Chunk ${attempt + 1} transcription failed:`, err);
@@ -348,35 +369,19 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
         
         console.log('30 seconds elapsed without detecting valid workout set');
         setIsRecording(false);
-        setError('Could not detect a workout set. Try saying: "Leg Press 160 for 10"');
-        
-        try {
-          stop();
-          await speak('Sorry, I could not detect a workout set. Please say something like: Leg Press 160 for 10 reps.');
-        } catch (ttsErr) {
-          console.warn('TTS error after failed detection:', ttsErr);
-        }
-        
         setPhase('idle');
-        return null;
+        setError('Could not detect a workout set');
+        return { error: 'timeout' as const };
       } catch (err) {
         console.error('Workout set listen error:', err);
         setIsRecording(false);
-        setError('Recording failed. Please try again.');
-        
-        try {
-          stop();
-          await speak('Sorry, recording failed. Please try again.');
-        } catch (ttsErr) {
-          console.warn('TTS error after recording failure:', ttsErr);
-        }
-        
         setPhase('idle');
-        return null;
+        setError('Recording failed');
+        return { error: 'recording_error' as const };
       }
     });
     
-    return result;
+    return result || { error: 'recording_error' as const };
   };
 
   const handleTapToSpeak = async () => {
@@ -388,8 +393,51 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     setError(null);
     setTranscript('');
     
-    const parsedSet = await listenForWorkoutSet();
+    stop();
+    await speak("I'm listening. Tell me your set.");
+    await new Promise(r => setTimeout(r, 300));
     
+    const result = await listenForWorkoutSet();
+    
+    if (result.error === 'first_attempt_failed') {
+      stop();
+      await speak("Hmm, I didn't catch that. Try saying it like: Leg Press, 160 pounds, for 10 reps.");
+      await new Promise(r => setTimeout(r, 500));
+      
+      const retryResult = await listenForWorkoutSet();
+      
+      if (retryResult.error === 'timeout') {
+        stop();
+        await speak("I'm having trouble hearing you. Tap again when you're ready, and say something like: Leg Press, 160 pounds, for 10 reps.");
+        return;
+      } else if (retryResult.error === 'recording_error') {
+        stop();
+        await speak("Oops, something went wrong with the recording. Let's try again.");
+        return;
+      } else if (retryResult.parsed) {
+        await processValidSet(retryResult.parsed);
+      }
+      return;
+    }
+    
+    if (result.error === 'timeout') {
+      stop();
+      await speak("I'm having trouble hearing you. Tap again when you're ready, and say something like: Leg Press, 160 pounds, for 10 reps.");
+      return;
+    }
+    
+    if (result.error === 'recording_error') {
+      stop();
+      await speak("Oops, something went wrong with the recording. Let's try again.");
+      return;
+    }
+    
+    if (result.parsed) {
+      await processValidSet(result.parsed);
+    }
+  };
+
+  const processValidSet = async (parsedSet: { exerciseName: string; weight: number; reps: number }) => {
     if (parsedSet) {
       console.log('Valid set detected, preparing confirmation...', parsedSet);
       
@@ -413,7 +461,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
         try {
           console.log('Inside runAudioTask, about to call speak()...');
           await speak(
-            `I heard ${titleCasedExercise}, ${parsedSet.weight} pounds for ${parsedSet.reps} reps. Should I log it?`
+            `Got it! ${titleCasedExercise}, ${parsedSet.weight} pounds, ${parsedSet.reps} reps. Should I log this?`
           );
           console.log('Speak completed successfully');
           return true;
@@ -479,50 +527,50 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.logoContainer}>
-          <View style={styles.logoCircle}>
+        <TouchableOpacity 
+          style={styles.logoContainer}
+          onPress={handleTapToSpeak}
+          disabled={phase !== 'idle' || loading}
+          activeOpacity={0.8}
+        >
+          <Animated.View 
+            style={[
+              styles.logoCircle,
+              {
+                transform: [{ scale: pulseAnim }],
+                borderColor: isRecording || isListeningYesNo ? colors.primary : colors.border.focus,
+                opacity: phase === 'idle' ? 1 : 0.7,
+              }
+            ]}
+          >
             <Text style={styles.logoText}>KORI</Text>
-          </View>
-        </View>
+          </Animated.View>
+          <Text style={styles.logoInstruction}>
+            {phase === 'idle' ? 'Tap me to start' : 
+             isRecording || isListeningYesNo ? "I'm listening..." : 
+             phase === 'transcribing' ? 'Thinking...' :
+             phase === 'confirming' ? 'One moment...' :
+             phase === 'logging' ? 'Saving it...' : 
+             phase === 'awaiting_yesno' ? 'Your call!' : ''}
+          </Text>
+        </TouchableOpacity>
 
-        {phase === 'idle' ? (
-          <>
-            <TouchableOpacity 
-              style={styles.tapToSpeakButton}
-              activeOpacity={0.8}
-              onPress={handleTapToSpeak}
-              disabled={loading}
-            >
-              <Text style={styles.tapToSpeakText}>Tap to Speak</Text>
-            </TouchableOpacity>
-
-            <Text style={styles.instructionText}>
-              Say your set like: &quot;Leg Press 160 for 10 reps&quot;
-            </Text>
-          </>
-        ) : phase === 'transcribing' ? (
-          <>
-            <Text style={styles.confirmationText}>
-              {isRecording ? 'Listening...' : 'Processing...'}
-            </Text>
-            <Text style={styles.instructionText}>
-              KORI will detect your workout set automatically
-            </Text>
-          </>
+        {phase === 'transcribing' ? (
+          <Text style={styles.instructionText}>
+            I&apos;ll let you know when I hear something
+          </Text>
         ) : phase === 'confirming' ? (
-          <>
-            <Text style={styles.confirmationText}>
-              {isListeningYesNo ? 'Listening...' : 'Processing...'}
-            </Text>
-          </>
+          <Text style={styles.instructionText}>
+            Just say yes or no
+          </Text>
         ) : phase === 'awaiting_yesno' && pendingSet ? (
           <>
             <Text style={styles.confirmationText}>
-              I heard: {pendingSet.exerciseName}, {pendingSet.weight} lbs for {pendingSet.reps} reps.
+              {pendingSet.exerciseName} - {pendingSet.weight} lbs × {pendingSet.reps} reps
             </Text>
 
             {isListeningYesNo ? (
-              <Text style={styles.instructionText}>Listening for yes/no...</Text>
+              <Text style={styles.instructionText}>Say yes or no...</Text>
             ) : (
               <View style={styles.confirmationButtons}>
                 <TouchableOpacity 
@@ -544,10 +592,6 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
                 </TouchableOpacity>
               </View>
             )}
-          </>
-        ) : phase === 'logging' ? (
-          <>
-            <Text style={styles.confirmationText}>Logging...</Text>
           </>
         ) : null}
 
@@ -617,12 +661,12 @@ const styles = StyleSheet.create({
     ...typography.logo,
     color: colors.primary,
   },
-  tapToSpeakButton: {
-    marginBottom: spacing.lg,
-  },
-  tapToSpeakText: {
-    ...typography.h3,
-    color: colors.text.primary,
+  logoInstruction: {
+    ...typography.bodyLarge,
+    color: colors.text.secondary,
+    textAlign: 'center',
+    marginTop: spacing.lg,
+    marginBottom: spacing['2xl'],
   },
   instructionText: {
     ...typography.bodySmall,
