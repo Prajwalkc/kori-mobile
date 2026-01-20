@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useWorkoutContext } from '../contexts';
 import { useRecommendations } from '../hooks';
@@ -80,7 +80,7 @@ export default function HomeScreen({ onNavigate }: HomeScreenProps) {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <View style={styles.header}>
-        <Text style={styles.logoText}>KORI</Text>
+        <Image source={require('../../assets/images/kori-icon.png')} style={styles.logo} />
       </View>
 
       <ScrollView
@@ -156,10 +156,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.sm,
   },
-  logoText: {
-    ...typography.h3,
-    color: colors.primary,
-    letterSpacing: 2,
+  logo: {
+    width: 50,
+    height: 50,
   },
   scrollView: {
     flex: 1,
