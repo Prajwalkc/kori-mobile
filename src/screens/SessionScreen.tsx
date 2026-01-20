@@ -415,14 +415,43 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       if (retryResult.type === 'success' && retryResult.parsed) {
         await processValidSet(retryResult.parsed);
       } else if (retryResult.type === 'first_failed') {
-        console.log('🔊 Second attempt also failed, giving voice feedback');
+        console.log('🔊 Second attempt also failed, giving voice feedback and continuing...');
         await new Promise(r => setTimeout(r, 800));
         stop();
         try {
-          await speakWithIndicator("Still no valid set detected. Please try again and say something like: Leg Press, 160 pounds, for 10 reps.");
-          console.log('🔊 Second failure speak completed');
+          await speakWithIndicator("Still no valid set detected. Continuing to listen...");
+          console.log('🔊 Second failure speak completed, will continue listening for remaining time');
         } catch (err) {
           console.error('🔊 Second failure speak FAILED:', err);
+        }
+        
+        await new Promise(r => setTimeout(r, 500));
+        
+        console.log('🔊 Final attempt - listening for remaining time...');
+        const finalResult = await listenForWorkoutSet();
+        
+        if (finalResult.type === 'success' && finalResult.parsed) {
+          await processValidSet(finalResult.parsed);
+        } else if (finalResult.type === 'timeout') {
+          console.log('🔊 Final attempt timed out');
+          await new Promise(r => setTimeout(r, 800));
+          stop();
+          try {
+            await speakWithIndicator("No valid set detected. Please tap again when you're ready.");
+            console.log('🔊 Final timeout speak completed');
+          } catch (err) {
+            console.error('🔊 Final timeout speak FAILED:', err);
+          }
+        } else if (finalResult.type === 'error') {
+          console.log('🔊 Final attempt errored');
+          await new Promise(r => setTimeout(r, 800));
+          stop();
+          try {
+            await speakWithIndicator("Oops, something went wrong. Please tap to try again.");
+            console.log('🔊 Final error speak completed');
+          } catch (err) {
+            console.error('🔊 Final error speak FAILED:', err);
+          }
         }
       } else if (retryResult.type === 'timeout') {
         console.log('🔊 Retry timed out, giving voice feedback');
