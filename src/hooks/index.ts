@@ -8,6 +8,7 @@ export { useKoriSpeech } from './useKoriSpeech';
 export { useRecommendations } from './useRecommendations';
 export { useSupabaseQuery } from './useSupabaseQuery';
 export { useTodaysWorkoutSets } from './useTodaysWorkoutSets';
+export { useWorkoutSession } from './useWorkoutSession';
 export { useWorkoutSetListener } from './useWorkoutSetListener';
 export { useYesNoListener } from './useYesNoListener';
 
