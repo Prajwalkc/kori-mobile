@@ -340,7 +340,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
               console.log('🔊 Calling stop()...');
               stop();
               console.log('🔊 Calling speak()...');
-              await speak("Hmm, I didn't catch that. Try saying it like: Leg Press, 160 pounds, for 10 reps.");
+              await speak("No valid set detected. Please try again. Say something like: Leg Press, 160 pounds, for 10 reps.");
               console.log('🔊 Speak completed!');
               await new Promise(r => setTimeout(r, 500));
               
@@ -355,12 +355,12 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
         
         console.log('30 seconds elapsed without detecting valid workout set');
         setIsRecording(false);
-        setError('Could not detect a workout set. Try saying: "Leg Press 160 for 10"');
+        setError('No valid set detected. Please try again.');
         setPhase('idle');
         
         console.log('🔊 Timeout - giving final voice feedback...');
         stop();
-        await speak("I'm having trouble hearing you. Tap again when you're ready, and say something like: Leg Press, 160 pounds, for 10 reps.");
+        await speak("No valid set detected after 30 seconds. Please tap again and say something like: Leg Press, 160 pounds, for 10 reps.");
         console.log('🔊 Timeout speak completed');
         
         return null;
