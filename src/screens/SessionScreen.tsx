@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, Easing, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useWorkoutContext } from '../contexts';
 import { useTodaysWorkoutSets } from '../hooks';
@@ -8,7 +8,7 @@ import { extractSetFromTranscript } from '../services/setExtractor';
 import { speak, stop } from '../services/tts';
 import { transcribeAudioFile } from '../services/whisper';
 import { logWorkoutSet } from '../services/workoutService';
-import { borderRadius, colors, shadows, spacing, typography } from '../theme';
+import { borderRadius, colors, spacing, typography } from '../theme';
 import { formatLocalDateYYYYMMDD } from '../types/workout';
 
 interface SessionScreenProps {
@@ -37,7 +37,39 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
   const [isKoriSpeaking, setIsKoriSpeaking] = useState(false);
 
   const audioBusyRef = React.useRef(false);
+  const koriPulseAnim = useRef(new Animated.Value(1)).current;
 
+  useEffect(() => {
+    const isActive = 
+      isKoriSpeaking || 
+      isRecording || 
+      isListeningYesNo || 
+      phase === 'transcribing' || 
+      phase === 'confirming' || 
+      phase === 'logging' ||
+      phase === 'awaiting_yesno';
+    
+    if (isActive) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(koriPulseAnim, {
+            toValue: 1.15,
+            duration: 800,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+          Animated.timing(koriPulseAnim, {
+            toValue: 1,
+            duration: 800,
+            easing: Easing.inOut(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      koriPulseAnim.setValue(1);
+    }
+  }, [isKoriSpeaking, isRecording, isListeningYesNo, phase, koriPulseAnim]);
   useEffect(() => {
     return () => {
       stop();
@@ -584,11 +616,23 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.logoContainer}>
-          <View style={styles.logoCircle}>
-            <Text style={styles.logoText}>KORI</Text>
-          </View>
+          <Animated.View 
+            style={[
+              styles.logoCircle,
+              {
+                transform: [{ scale: koriPulseAnim }],
+                shadowOpacity: (isKoriSpeaking || isRecording || isListeningYesNo || phase !== 'idle') ? 0.6 : 0.3,
+              }
+            ]}
+          >
+            <Image 
+              source={require('../../assets/images/kori.png')}
+              style={styles.logoImage}
+              resizeMode="stretch"
+            />              
+          </Animated.View>
         </View>
-
+        
         {phase === 'idle' ? (
           <>
             <TouchableOpacity 
@@ -718,22 +762,33 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.lg,
   },
   logoContainer: {
-    marginBottom: spacing['3xl'],
-  },
-  logoCircle: {
-    width: 180,
-    height: 180,
-    borderRadius: borderRadius.full,
-    backgroundColor: colors.background.elevated,
-    borderWidth: 2,
-    borderColor: colors.border.focus,
     alignItems: 'center',
     justifyContent: 'center',
-    ...shadows.glow,
+    marginBottom: spacing['2xl'],
+  },
+  logoCircle: {
+    width: 160,
+    height: 160,
+    borderRadius: borderRadius.full,
+    backgroundColor: 'rgba(59, 130, 246, 0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: colors.primary,
+    shadowOffset: {
+      width: 0,
+      height: 0,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 8,
   },
   logoText: {
     ...typography.logo,
     color: colors.primary,
+  },
+  logoImage: {
+    width: 200,
+    height: 200,
   },
   tapToSpeakButton: {
     marginBottom: spacing.lg,
