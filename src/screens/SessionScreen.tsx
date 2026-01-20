@@ -390,81 +390,21 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       await new Promise(r => setTimeout(r, 300));
     });
     
-    const result = await listenForWorkoutSet();
+    const maxAttempts = 4;
+    let attemptCount = 0;
+    let result = await listenForWorkoutSet();
     
-    if (result.type === 'first_failed') {
-      console.log('🔊 First attempt failed, giving voice feedback NOW');
-      console.log('🔊 audioBusyRef.current:', audioBusyRef.current);
+    while (attemptCount < maxAttempts) {
+      attemptCount++;
+      console.log(`🔄 Attempt ${attemptCount}/${maxAttempts}`);
       
-      await new Promise(r => setTimeout(r, 800));
-      
-      console.log('🔊 About to call stop()...');
-      stop();
-      console.log('🔊 About to call speak()...');
-      try {
-        await speakWithIndicator("No valid set detected. Please try again. Say something like: Leg Press, 160 pounds, for 10 reps.");
-        console.log('🔊 Speak completed successfully!');
-      } catch (err) {
-        console.error('🔊 Speak FAILED:', err);
+      if (result.type === 'success' && result.parsed) {
+        await processValidSet(result.parsed);
+        return;
       }
-      await new Promise(r => setTimeout(r, 500));
       
-      console.log('🔊 Retrying after first failure...');
-      const retryResult = await listenForWorkoutSet();
-      
-      if (retryResult.type === 'success' && retryResult.parsed) {
-        await processValidSet(retryResult.parsed);
-      } else if (retryResult.type === 'first_failed') {
-        console.log('🔊 Second attempt also failed, giving voice feedback and continuing...');
-        await new Promise(r => setTimeout(r, 800));
-        stop();
-        try {
-          await speakWithIndicator("Still no valid set detected. Continuing to listen...");
-          console.log('🔊 Second failure speak completed, will continue listening for remaining time');
-        } catch (err) {
-          console.error('🔊 Second failure speak FAILED:', err);
-        }
-        
-        await new Promise(r => setTimeout(r, 500));
-        
-        console.log('🔊 Final attempt - listening for remaining time...');
-        const finalResult = await listenForWorkoutSet();
-        
-        if (finalResult.type === 'success' && finalResult.parsed) {
-          await processValidSet(finalResult.parsed);
-        } else if (finalResult.type === 'timeout') {
-          console.log('🔊 Final attempt timed out');
-          await new Promise(r => setTimeout(r, 800));
-          stop();
-          try {
-            await speakWithIndicator("No valid set detected. Please tap again when you're ready.");
-            console.log('🔊 Final timeout speak completed');
-          } catch (err) {
-            console.error('🔊 Final timeout speak FAILED:', err);
-          }
-        } else if (finalResult.type === 'error') {
-          console.log('🔊 Final attempt errored');
-          await new Promise(r => setTimeout(r, 800));
-          stop();
-          try {
-            await speakWithIndicator("Oops, something went wrong. Please tap to try again.");
-            console.log('🔊 Final error speak completed');
-          } catch (err) {
-            console.error('🔊 Final error speak FAILED:', err);
-          }
-        }
-      } else if (retryResult.type === 'timeout') {
-        console.log('🔊 Retry timed out, giving voice feedback');
-        await new Promise(r => setTimeout(r, 800));
-        stop();
-        try {
-          await speakWithIndicator("No valid set detected after 30 seconds. Please tap again and say something like: Leg Press, 160 pounds, for 10 reps.");
-          console.log('🔊 Timeout speak completed');
-        } catch (err) {
-          console.error('🔊 Timeout speak FAILED:', err);
-        }
-      } else if (retryResult.type === 'error') {
-        console.log('🔊 Retry errored, giving voice feedback');
+      if (result.type === 'error') {
+        console.log('🔊 Recording error, giving voice feedback');
         await new Promise(r => setTimeout(r, 800));
         stop();
         try {
@@ -473,38 +413,55 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
         } catch (err) {
           console.error('🔊 Error speak FAILED:', err);
         }
+        return;
       }
-      return;
-    }
-    
-    if (result.type === 'timeout') {
-      console.log('🔊 Timeout, giving voice feedback NOW');
-      await new Promise(r => setTimeout(r, 800));
-      stop();
-      try {
-        await speakWithIndicator("No valid set detected after 30 seconds. Please tap again and say something like: Leg Press, 160 pounds, for 10 reps.");
-        console.log('🔊 Timeout speak completed');
-      } catch (err) {
-        console.error('🔊 Timeout speak FAILED:', err);
+      
+      if (result.type === 'timeout') {
+        console.log('🔊 Timeout (30s), giving voice feedback');
+        await new Promise(r => setTimeout(r, 800));
+        stop();
+        try {
+          await speakWithIndicator("No valid set detected after 30 seconds. Please tap again when you're ready.");
+          console.log('🔊 Timeout speak completed');
+        } catch (err) {
+          console.error('🔊 Timeout speak FAILED:', err);
+        }
+        return;
       }
-      return;
-    }
-    
-    if (result.type === 'error') {
-      console.log('🔊 Error, giving voice feedback NOW');
-      await new Promise(r => setTimeout(r, 800));
-      stop();
-      try {
-        await speakWithIndicator("Oops, something went wrong with the recording. Let's try again.");
-        console.log('🔊 Error speak completed');
-      } catch (err) {
-        console.error('🔊 Error speak FAILED:', err);
+      
+      if (result.type === 'first_failed') {
+        if (attemptCount >= maxAttempts) {
+          console.log('🔊 All attempts exhausted, giving up');
+          await new Promise(r => setTimeout(r, 800));
+          stop();
+          try {
+            await speakWithIndicator("I couldn't detect a valid set after several tries. Please tap again when you're ready.");
+            console.log('🔊 Final failure speak completed');
+          } catch (err) {
+            console.error('🔊 Final failure speak FAILED:', err);
+          }
+          return;
+        }
+        
+        console.log(`🔊 Attempt ${attemptCount} failed, giving voice feedback`);
+        await new Promise(r => setTimeout(r, 800));
+        stop();
+        
+        try {
+          if (attemptCount === 1) {
+            await speakWithIndicator("No valid set detected. Try saying: Leg Press, 160 pounds, for 10 reps.");
+          } else {
+            await speakWithIndicator("Still no valid set. Continuing to listen...");
+          }
+          console.log(`🔊 Attempt ${attemptCount} feedback completed`);
+        } catch (err) {
+          console.error(`🔊 Attempt ${attemptCount} feedback FAILED:`, err);
+        }
+        
+        await new Promise(r => setTimeout(r, 500));
+        console.log(`🔊 Starting attempt ${attemptCount + 1}...`);
+        result = await listenForWorkoutSet();
       }
-      return;
-    }
-    
-    if (result.type === 'success' && result.parsed) {
-      await processValidSet(result.parsed);
     }
   };
 
