@@ -104,11 +104,11 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
   const listenForYesNoOnce = async (): Promise<'yes' | 'no' | 'unknown'> => {
     const result = await runAudioTask(async () => {
       try {
-        console.log('Listening for yes/no (30 seconds, checking every 5s)...');
+        console.log('Listening for yes/no (9 seconds, checking every 3s)...');
         setIsListeningYesNo(true);
         
-        const maxAttempts = 6;
-        const chunkDuration = 5000;
+        const maxAttempts = 3;
+        const chunkDuration = 3000;
         
         for (let attempt = 0; attempt < maxAttempts; attempt++) {
           console.log(`Yes/No attempt ${attempt + 1}/${maxAttempts}`);
@@ -144,7 +144,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
           }
         }
         
-        console.log('30 seconds elapsed without clear yes/no');
+        console.log('9 seconds elapsed without clear yes/no');
         setIsListeningYesNo(false);
         return 'unknown' as const;
       } catch (err) {
@@ -283,20 +283,32 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
         return;
       }
       
-      console.log('Both attempts unclear, showing buttons');
+      console.log('Both attempts unclear, giving up');
+      await new Promise(r => setTimeout(r, 300));
       await runAudioTask(async () => {
         try {
-          await speakWithIndicator("I didn't catch that. You can tap Yes or No.");
+          await speakWithIndicator("Sorry, I could not find an answer. Please tap again to record your set.");
         } catch (err) {
           console.warn('TTS fallback error:', err);
         }
       });
       
-      setPhase('awaiting_yesno');
+      setPendingSet(null);
+      setTranscript('');
+      setPhase('idle');
     } catch (err) {
       console.error('Auto yes/no flow error:', err);
-      setError('Voice confirmation failed. Use buttons below.');
-      setPhase('awaiting_yesno');
+      await new Promise(r => setTimeout(r, 300));
+      await runAudioTask(async () => {
+        try {
+          await speakWithIndicator("Sorry, something went wrong. Please tap again to record your set.");
+        } catch (ttsErr) {
+          console.warn('TTS error fallback error:', ttsErr);
+        }
+      });
+      setPendingSet(null);
+      setTranscript('');
+      setPhase('idle');
     }
   };
 
@@ -404,8 +416,8 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     console.log('🎤 Starting workout set detection...');
     await runAudioTask(async () => {
       stop();
-      await speakWithIndicator("I'm listening. Tell me your set.");
-      await new Promise(r => setTimeout(r, 300));
+      await speakWithIndicator("I'm listening. Say your set like: Leg Press, 160 pounds, for 10 reps.");
+      await new Promise(r => setTimeout(r, 500));
     });
     
     const maxAttempts = 4;
@@ -506,7 +518,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
         try {
           console.log('Inside runAudioTask, about to call speak()...');
           await speakWithIndicator(
-            `I heard ${titleCasedExercise}, ${parsedSet.weight} pounds for ${parsedSet.reps} reps. Should I log it?`
+            `I heard ${titleCasedExercise}, ${parsedSet.weight} pounds for ${parsedSet.reps} reps. Say yes to log it, or no to skip.`
           );
           console.log('Speak completed successfully');
           return true;
@@ -580,12 +592,20 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
         {phase === 'idle' ? (
           <>
             <TouchableOpacity 
-              style={styles.tapToSpeakButton}
+              style={[
+                styles.tapToSpeakButton,
+                (loading || isKoriSpeaking) && styles.tapToSpeakButtonDisabled
+              ]}
               activeOpacity={0.8}
               onPress={handleTapToSpeak}
-              disabled={loading}
+              disabled={loading || isKoriSpeaking}
             >
-              <Text style={styles.tapToSpeakText}>Tap to Speak</Text>
+              <Text style={[
+                styles.tapToSpeakText,
+                (loading || isKoriSpeaking) && styles.tapToSpeakTextDisabled
+              ]}>
+                Tap to Speak
+              </Text>
             </TouchableOpacity>
 
             <Text style={styles.instructionText}>
@@ -718,9 +738,15 @@ const styles = StyleSheet.create({
   tapToSpeakButton: {
     marginBottom: spacing.lg,
   },
+  tapToSpeakButtonDisabled: {
+    opacity: 0.4,
+  },
   tapToSpeakText: {
     ...typography.h3,
     color: colors.text.primary,
+  },
+  tapToSpeakTextDisabled: {
+    opacity: 0.5,
   },
   instructionText: {
     ...typography.bodySmall,
