@@ -414,6 +414,16 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       
       if (retryResult.type === 'success' && retryResult.parsed) {
         await processValidSet(retryResult.parsed);
+      } else if (retryResult.type === 'first_failed') {
+        console.log('🔊 Second attempt also failed, giving voice feedback');
+        await new Promise(r => setTimeout(r, 800));
+        stop();
+        try {
+          await speakWithIndicator("Still no valid set detected. Please try again and say something like: Leg Press, 160 pounds, for 10 reps.");
+          console.log('🔊 Second failure speak completed');
+        } catch (err) {
+          console.error('🔊 Second failure speak FAILED:', err);
+        }
       } else if (retryResult.type === 'timeout') {
         console.log('🔊 Retry timed out, giving voice feedback');
         await new Promise(r => setTimeout(r, 800));
