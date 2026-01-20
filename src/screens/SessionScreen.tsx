@@ -435,7 +435,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
           await new Promise(r => setTimeout(r, 800));
           stop();
           try {
-            await speakWithIndicator("I couldn't detect a valid set after several tries. Please tap again when you're ready.");
+            await speakWithIndicator("I couldn't detect a valid set after several tries. Please tap again and say something like: Leg Press, 160 pounds, for 10 reps.");
             console.log('🔊 Final failure speak completed');
           } catch (err) {
             console.error('🔊 Final failure speak FAILED:', err);
@@ -451,7 +451,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
           if (attemptCount === 1) {
             await speakWithIndicator("No valid set detected. Try saying: Leg Press, 160 pounds, for 10 reps.");
           } else {
-            await speakWithIndicator("Still no valid set. Continuing to listen...");
+            await speakWithIndicator("Still no valid set. Try again. Say something like: Leg Press, 160 pounds, for 10 reps.");
           }
           console.log(`🔊 Attempt ${attemptCount} feedback completed`);
         } catch (err) {
