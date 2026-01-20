@@ -11,6 +11,12 @@ export function parseWorkoutSet(raw: string): ParsedWorkoutSet | null {
     .replace(/\s+/g, ' ')
     .trim();
 
+  // Reject contextual phrases - let LLM handle these
+  if (text.includes('same weight') || text.includes('same reps') || text.includes('same as')) {
+    console.log('🚫 Regex parser: detected contextual phrase, skipping to LLM');
+    return null;
+  }
+
   const re = /^(?<exercise>[a-z ]+?)\s+(?<weight>\d+(?:\.\d+)?)\s*(?:lbs|pounds)?\s*(?:for|x)?\s*(?<reps>\d+)\s*(?:reps)?$/i;
   const match = text.match(re);
   

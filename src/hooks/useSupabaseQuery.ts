@@ -4,7 +4,7 @@ interface UseSupabaseQueryResult<T> {
   data: T | null;
   loading: boolean;
   error: string | null;
-  refetch: () => Promise<void>;
+  refetch: () => Promise<T | null>;
 }
 
 export function useSupabaseQuery<T>(
@@ -14,15 +14,17 @@ export function useSupabaseQuery<T>(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (): Promise<T | null> => {
     try {
       setLoading(true);
       setError(null);
       const result = await queryFn();
       setData(result);
+      return result;
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Query failed');
       console.error('Supabase query error:', err);
+      return null;
     } finally {
       setLoading(false);
     }

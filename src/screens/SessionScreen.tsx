@@ -134,7 +134,12 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
         userId: null,
       });
 
-      await refetchSets();
+      console.log('💾 Set logged, refetching sets...');
+      const freshSets = await refetchSets();
+      console.log('✅ Sets refetched, new count:', freshSets ? freshSets.length : 0);
+      
+      // Small delay to ensure state propagation
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       await runAudioTask(async () => {
         try {
@@ -275,14 +280,40 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
             ]);
             
             console.log(`Chunk transcript: "${transcript}"`);
-            setTranscript(transcript);
             
+            console.log('🔍 Attempting regex parse...');
             let parsed = parseWorkoutSet(transcript);
+            console.log('🔍 Regex parse result:', parsed);
+            
+            // Validate parsed result
+            if (parsed && (parsed.weight < 5 || parsed.weight > 1000 || parsed.reps < 1 || parsed.reps > 50)) {
+              console.log('⚠️ Regex parse invalid (weight or reps out of range), forcing LLM fallback');
+              parsed = null;
+            }
             
             if (!parsed) {
               console.log('Regex parse failed, trying LLM...');
+              console.log('📊 Current todaySets:', todaySets ? todaySets.length : 'null', 'sets');
               try {
-                const llmResult = await extractSetFromTranscript(transcript);
+                let lastSet = null;
+                if (todaySets && todaySets.length > 0) {
+                  const last = todaySets.reduce((max, set) => 
+                    set.id > max.id ? set : max
+                  );
+                  lastSet = {
+                    exerciseName: last.exerciseName,
+                    weight: last.weight,
+                    reps: last.reps,
+                  };
+                  console.log('✅ lastSet extracted:', lastSet);
+                } else {
+                  console.log('⚠️ No lastSet available (todaySets empty or null)');
+                }
+                
+                console.log('🤖 Calling LLM with transcript:', transcript);
+                console.log('🤖 Calling LLM with lastSet:', lastSet);
+                const llmResult = await extractSetFromTranscript(transcript, lastSet);
+                console.log('🤖 LLM result:', llmResult);
                 
                 if (llmResult.ok) {
                   console.log('LLM extraction success!');
@@ -299,6 +330,8 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
             
             if (parsed) {
               console.log('Valid workout set detected!');
+              // Set transcript to the parsed/validated data (source of truth)
+              setTranscript(`${parsed.exerciseName}, ${parsed.weight} pounds, ${parsed.reps} reps`);
               setIsRecording(false);
               return { type: 'success' as const, parsed };
             }
@@ -339,7 +372,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     
     await runAudioTask(async () => {
       stop();
-      await speakWithIndicator("I'm listening. Say your set like: Leg Press, 160 pounds, for 10 reps.");
+      await speakWithIndicator("I'm listening. Say your set");
       await new Promise(r => setTimeout(r, 500));
     });
     
@@ -572,8 +605,8 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
 
         {transcript && (
           <View style={styles.transcriptContainer}>
-            <Text style={styles.transcriptLabel}>Transcribed:</Text>
-            <Text style={styles.transcriptText}>&quot;{transcript}&quot;</Text>
+            <Text style={styles.transcriptLabel}>KORI understood:</Text>
+            <Text style={styles.transcriptText}>{transcript}</Text>
           </View>
         )}
 

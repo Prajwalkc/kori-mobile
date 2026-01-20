@@ -9,16 +9,22 @@ const SET_EXTRACTION_SCHEMA = {
     weight: { type: ['number', 'null'] },
     reps: { type: ['integer', 'null'] },
     reason: { type: ['string', 'null'] },
+    usedLastSet: { type: 'boolean' },
+    inferredFields: {
+      type: 'array',
+      items: { type: 'string' },
+    },
   },
-  required: ['ok', 'exerciseName', 'weight', 'reps', 'reason'],
+  required: ['ok', 'exerciseName', 'weight', 'reps', 'reason', 'usedLastSet', 'inferredFields'],
 } as const;
 
 type SetExtractionResult =
-  | { ok: true; exerciseName: string; weight: number; reps: number; reason: null }
-  | { ok: false; exerciseName: null; weight: null; reps: null; reason: string };
+  | { ok: true; exerciseName: string; weight: number; reps: number; reason: null; usedLastSet: boolean; inferredFields: string[] }
+  | { ok: false; exerciseName: null; weight: null; reps: null; reason: string; usedLastSet: boolean; inferredFields: string[] };
 
 export async function extractSetFromTranscript(
-  transcript: string
+  transcript: string,
+  lastSet?: { exerciseName: string; weight: number; reps: number } | null
 ): Promise<
   | { ok: true; exerciseName: string; weight: number; reps: number }
   | { ok: false; reason: string }
@@ -30,26 +36,68 @@ export async function extractSetFromTranscript(
     );
   }
 
-  const systemPrompt = `You are a strict workout logging assistant. Extract exercise, weight, and reps ONLY from valid workout descriptions.
+  const systemPrompt = `You are a strict workout logging assistant. Extract exercise, weight (as NUMBER), and reps (as NUMBER) from user speech.
 
-STRICT RULES:
-1. ONLY extract if ALL THREE are clearly present: exercise name, weight (number), and rep count (number)
-2. Exercise name MUST be a real, recognizable gym exercise (e.g., "Leg Press", "Squat", "Bench Press", "Hamstring Curl", "Calf Raise")
-3. Weight MUST be a reasonable number (5-1000 pounds). Default is pounds unless "kg" stated.
-4. Reps MUST be a reasonable number (1-50 reps)
-5. If the user says anything random, unclear, or not workout-related, return ok=false
-6. DO NOT extract from: greetings, questions, statements, random words, colors, or anything that isn't a workout set
+CRITICAL: Your output MUST contain NUMERIC values for weight and reps, NEVER text like "same weight" or "same reps".
+
+RULES:
+1. Exercise name MUST be a real gym exercise (e.g., "Leg Press", "Squat", "Bench Press")
+2. Weight MUST be a NUMERIC value between 5-1000 (pounds). Default unit is pounds.
+3. Reps MUST be a NUMERIC value between 1-50
+4. Convert worded numbers to digits: "ninety five" → 95, "ten" → 10, "eighty" → 80
+5. Never guess; if uncertain return ok=false
+
+CONTEXTUAL PHRASES - When user says "same weight" or "same reps":
+
+IF transcript contains "same weight":
+  1. Check if lastSet exists (not null)
+  2. If lastSet is null → return ok=false, reason="No previous weight available"
+  3. Extract reps from transcript (MUST be present)
+  4. Return: exerciseName=lastSet.exerciseName, weight=lastSet.weight (NUMERIC VALUE), reps=(extracted from transcript)
+  5. Set usedLastSet=true, inferredFields=["weight from lastSet","exerciseName from lastSet"]
+  6. EXCEPTION: If user mentions a different exercise name, use that instead and set usedLastSet=false
+
+IF transcript contains "same reps":
+  1. Check if lastSet exists (not null)
+  2. If lastSet is null → return ok=false, reason="No previous reps available"
+  3. Extract weight from transcript (MUST be present)
+  4. Return: exerciseName=lastSet.exerciseName, weight=(extracted from transcript), reps=lastSet.reps (NUMERIC VALUE)
+  5. Set usedLastSet=true, inferredFields=["reps from lastSet","exerciseName from lastSet"]
+  6. EXCEPTION: If user mentions a different exercise name, use that instead and set usedLastSet=false
+
+STANDARD EXTRACTION (no "same weight" or "same reps"):
+- Extract all three: exercise name, weight (number), reps (number)
+- Set usedLastSet=false, inferredFields=[]
+
+EXAMPLES with lastSet={exerciseName:"Leg Press", weight:180, reps:10}:
+
+Input: "same weight for 12"
+Output: ok:true, exerciseName:"Leg Press", weight:180, reps:12, usedLastSet:true, inferredFields:["weight from lastSet","exerciseName from lastSet"]
+Explanation: Used lastSet.weight (180) and lastSet.exerciseName, extracted reps (12) from transcript
+
+Input: "same weight twelve reps"
+Output: ok:true, exerciseName:"Leg Press", weight:180, reps:12, usedLastSet:true, inferredFields:["weight from lastSet","exerciseName from lastSet"]
+
+Input: "same reps at 190"
+Output: ok:true, exerciseName:"Leg Press", weight:190, reps:10, usedLastSet:true, inferredFields:["reps from lastSet","exerciseName from lastSet"]
+Explanation: Used lastSet.reps (10) and lastSet.exerciseName, extracted weight (190) from transcript
+
+Input: "hamstring curl same weight for 8"
+Output: ok:true, exerciseName:"Hamstring Curl", weight:180, reps:8, usedLastSet:false, inferredFields:["weight from lastSet"]
+Explanation: Used lastSet.weight (180), but user specified different exercise
+
+Input: "leg press 200 for 10"
+Output: ok:true, exerciseName:"Leg Press", weight:200, reps:10, usedLastSet:false, inferredFields:[]
+Explanation: Standard extraction, no contextual phrases
 
 REJECT Examples:
-- "I like red press on red" → ok:false, reason:"Not a valid workout description"
+- "same weight for 10" (lastSet=null) → ok:false, reason:"No previous weight available"
 - "hello there" → ok:false, reason:"No exercise information"
-- "press 1 for 1" → ok:false, reason:"Invalid weight/reps values"
-- "just finished" → ok:false, reason:"No specific set information"
+- "same weight" (no reps) → ok:false, reason:"Missing reps information"`;
 
-ACCEPT Examples:
-- "leg press 160 for 10" → ok:true, exerciseName:"Leg Press", weight:160, reps:10
-- "hamstring curl 80 pounds 12 reps" → ok:true, exerciseName:"Hamstring Curl", weight:80, reps:12
-- "squat 225 for 5" → ok:true, exerciseName:"Squat", weight:225, reps:5`;
+  const userMessage = lastSet
+    ? `transcript: "${transcript}"; lastSet: ${JSON.stringify(lastSet)}`
+    : `transcript: "${transcript}"; lastSet: null`;
 
   try {
     const response = await fetch(OPENAI_API_URL, {
@@ -62,7 +110,7 @@ ACCEPT Examples:
         model: 'gpt-4o-mini-2024-07-18',
         messages: [
           { role: 'system', content: systemPrompt },
-          { role: 'user', content: transcript },
+          { role: 'user', content: userMessage },
         ],
         response_format: {
           type: 'json_schema',
