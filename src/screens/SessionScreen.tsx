@@ -34,6 +34,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isListeningYesNo, setIsListeningYesNo] = useState(false);
   const [transcript, setTranscript] = useState<string>('');
+  const [isKoriSpeaking, setIsKoriSpeaking] = useState(false);
 
   const audioBusyRef = React.useRef(false);
 
@@ -61,6 +62,15 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     } finally {
       audioBusyRef.current = false;
       console.log('🔓 Audio lock released');
+    }
+  };
+
+  const speakWithIndicator = async (text: string) => {
+    setIsKoriSpeaking(true);
+    try {
+      await speak(text);
+    } finally {
+      setIsKoriSpeaking(false);
     }
   };
 
@@ -176,7 +186,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       
       await runAudioTask(async () => {
         try {
-          await speak('Thanks, logged it.');
+          await speakWithIndicator('Thanks, logged it.');
         } catch (err) {
           console.warn('TTS log confirmation error:', err);
         }
@@ -199,7 +209,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     console.log('rejectSetAndConfirm called');
     await runAudioTask(async () => {
       try {
-        await speak('Okay gotcha, not logged it.');
+        await speakWithIndicator('Okay gotcha, not logged it.');
       } catch (err) {
         console.warn('TTS reject confirmation error:', err);
       }
@@ -237,7 +247,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       
       await runAudioTask(async () => {
         try {
-          await speak('Please say yes or no.');
+          await speakWithIndicator('Please say yes or no.');
         } catch (err) {
           console.warn('TTS retry prompt error:', err);
         }
@@ -258,7 +268,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       console.log('Both attempts unclear, showing buttons');
       await runAudioTask(async () => {
         try {
-          await speak("I didn't catch that. You can tap Yes or No.");
+          await speakWithIndicator("I didn't catch that. You can tap Yes or No.");
         } catch (err) {
           console.warn('TTS fallback error:', err);
         }
@@ -376,7 +386,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     console.log('🎤 Starting workout set detection...');
     await runAudioTask(async () => {
       stop();
-      await speak("I'm listening. Tell me your set.");
+      await speakWithIndicator("I'm listening. Tell me your set.");
       await new Promise(r => setTimeout(r, 300));
     });
     
@@ -392,7 +402,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       stop();
       console.log('🔊 About to call speak()...');
       try {
-        await speak("No valid set detected. Please try again. Say something like: Leg Press, 160 pounds, for 10 reps.");
+        await speakWithIndicator("No valid set detected. Please try again. Say something like: Leg Press, 160 pounds, for 10 reps.");
         console.log('🔊 Speak completed successfully!');
       } catch (err) {
         console.error('🔊 Speak FAILED:', err);
@@ -409,7 +419,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
         await new Promise(r => setTimeout(r, 800));
         stop();
         try {
-          await speak("No valid set detected after 30 seconds. Please tap again and say something like: Leg Press, 160 pounds, for 10 reps.");
+          await speakWithIndicator("No valid set detected after 30 seconds. Please tap again and say something like: Leg Press, 160 pounds, for 10 reps.");
           console.log('🔊 Timeout speak completed');
         } catch (err) {
           console.error('🔊 Timeout speak FAILED:', err);
@@ -419,7 +429,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
         await new Promise(r => setTimeout(r, 800));
         stop();
         try {
-          await speak("Oops, something went wrong with the recording. Let's try again.");
+          await speakWithIndicator("Oops, something went wrong with the recording. Let's try again.");
           console.log('🔊 Error speak completed');
         } catch (err) {
           console.error('🔊 Error speak FAILED:', err);
@@ -433,7 +443,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       await new Promise(r => setTimeout(r, 800));
       stop();
       try {
-        await speak("No valid set detected after 30 seconds. Please tap again and say something like: Leg Press, 160 pounds, for 10 reps.");
+        await speakWithIndicator("No valid set detected after 30 seconds. Please tap again and say something like: Leg Press, 160 pounds, for 10 reps.");
         console.log('🔊 Timeout speak completed');
       } catch (err) {
         console.error('🔊 Timeout speak FAILED:', err);
@@ -446,7 +456,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       await new Promise(r => setTimeout(r, 800));
       stop();
       try {
-        await speak("Oops, something went wrong with the recording. Let's try again.");
+        await speakWithIndicator("Oops, something went wrong with the recording. Let's try again.");
         console.log('🔊 Error speak completed');
       } catch (err) {
         console.error('🔊 Error speak FAILED:', err);
@@ -478,22 +488,22 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     setPhase('confirming');
 
     console.log('About to speak confirmation...');
-    const speakResult = await runAudioTask(async () => {
-      try {
-        console.log('Inside runAudioTask, about to call speak()...');
-        await speak(
-          `I heard ${titleCasedExercise}, ${parsedSet.weight} pounds for ${parsedSet.reps} reps. Should I log it?`
-        );
-        console.log('Speak completed successfully');
-        return true;
-      } catch (err) {
-        console.error('TTS confirmation error:', err);
-        setError('Speech failed');
-        setPhase('idle');
-        setPendingSet(null);
-        return false;
-      }
-    });
+      const speakResult = await runAudioTask(async () => {
+        try {
+          console.log('Inside runAudioTask, about to call speak()...');
+          await speakWithIndicator(
+            `I heard ${titleCasedExercise}, ${parsedSet.weight} pounds for ${parsedSet.reps} reps. Should I log it?`
+          );
+          console.log('Speak completed successfully');
+          return true;
+        } catch (err) {
+          console.error('TTS confirmation error:', err);
+          setError('Speech failed');
+          setPhase('idle');
+          setPendingSet(null);
+          return false;
+        }
+      });
 
     console.log('speakResult:', speakResult);
     if (speakResult) {
@@ -626,6 +636,12 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
           </View>
         )}
 
+        {isKoriSpeaking && (
+          <View style={styles.speakingIndicator}>
+            <Text style={styles.speakingText}>KORI is speaking...</Text>
+          </View>
+        )}
+
         {error && <Text style={styles.errorText}>{error}</Text>}
 
         <View style={styles.loggedSetsContainer}>
@@ -745,6 +761,19 @@ const styles = StyleSheet.create({
     ...typography.body,
     color: colors.text.secondary,
     fontStyle: 'italic',
+  },
+  speakingIndicator: {
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    marginBottom: spacing.lg,
+    alignSelf: 'center',
+  },
+  speakingText: {
+    ...typography.bodySmall,
+    color: colors.background.primary,
+    fontWeight: '600',
   },
   confirmationText: {
     ...typography.bodyLarge,
