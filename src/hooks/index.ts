@@ -2,6 +2,7 @@ export { useWorkout } from './useWorkout';
 export type { WorkoutData, WorkoutStatus } from './useWorkout';
 
 export { useAudioLock } from './useAudioLock';
+export { useAudioRecorder } from './useAudioRecorder';
 export { useKoriAnimation } from './useKoriAnimation';
 export { useKoriSpeech } from './useKoriSpeech';
 export { useRecommendations } from './useRecommendations';

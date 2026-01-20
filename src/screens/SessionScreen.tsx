@@ -3,12 +3,12 @@ import { Animated, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View }
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useWorkoutContext } from '../contexts';
 import {
-    useAudioLock,
-    useKoriAnimation,
-    useKoriSpeech,
-    useTodaysWorkoutSets,
-    useWorkoutSetListener,
-    useYesNoListener,
+  useAudioLock,
+  useKoriAnimation,
+  useKoriSpeech,
+  useTodaysWorkoutSets,
+  useWorkoutSetListener,
+  useYesNoListener,
 } from '../hooks';
 import { stopRecording } from '../services';
 import { stop } from '../services/tts';
@@ -227,7 +227,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     await runAudioTask(async () => {
       stop();
       await speakWithIndicator("I'm listening. Say your set");
-      await new Promise(r => setTimeout(r, 500));
+      
     });
     
     const maxAttempts = 4;
