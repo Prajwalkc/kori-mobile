@@ -339,6 +339,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
               console.log('First attempt failed, will return for voice feedback');
               setIsRecording(false);
               setPhase('idle');
+              console.log('✅ Returning first_failed, audio lock should be released next');
               return { type: 'first_failed' as const };
             }
           } catch (err) {
@@ -372,12 +373,30 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     setError(null);
     setTranscript('');
     
+    console.log('🎤 Starting workout set detection...');
+    await runAudioTask(async () => {
+      stop();
+      await speak("I'm listening. Tell me your set.");
+      await new Promise(r => setTimeout(r, 300));
+    });
+    
     const result = await listenForWorkoutSet();
     
     if (result.type === 'first_failed') {
       console.log('🔊 First attempt failed, giving voice feedback NOW');
+      console.log('🔊 audioBusyRef.current:', audioBusyRef.current);
+      
+      await new Promise(r => setTimeout(r, 800));
+      
+      console.log('🔊 About to call stop()...');
       stop();
-      await speak("No valid set detected. Please try again. Say something like: Leg Press, 160 pounds, for 10 reps.");
+      console.log('🔊 About to call speak()...');
+      try {
+        await speak("No valid set detected. Please try again. Say something like: Leg Press, 160 pounds, for 10 reps.");
+        console.log('🔊 Speak completed successfully!');
+      } catch (err) {
+        console.error('🔊 Speak FAILED:', err);
+      }
       await new Promise(r => setTimeout(r, 500));
       
       console.log('🔊 Retrying after first failure...');
@@ -386,26 +405,52 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       if (retryResult.type === 'success' && retryResult.parsed) {
         await processValidSet(retryResult.parsed);
       } else if (retryResult.type === 'timeout') {
+        console.log('🔊 Retry timed out, giving voice feedback');
+        await new Promise(r => setTimeout(r, 800));
         stop();
-        await speak("No valid set detected after 30 seconds. Please tap again and say something like: Leg Press, 160 pounds, for 10 reps.");
+        try {
+          await speak("No valid set detected after 30 seconds. Please tap again and say something like: Leg Press, 160 pounds, for 10 reps.");
+          console.log('🔊 Timeout speak completed');
+        } catch (err) {
+          console.error('🔊 Timeout speak FAILED:', err);
+        }
       } else if (retryResult.type === 'error') {
+        console.log('🔊 Retry errored, giving voice feedback');
+        await new Promise(r => setTimeout(r, 800));
         stop();
-        await speak("Oops, something went wrong with the recording. Let's try again.");
+        try {
+          await speak("Oops, something went wrong with the recording. Let's try again.");
+          console.log('🔊 Error speak completed');
+        } catch (err) {
+          console.error('🔊 Error speak FAILED:', err);
+        }
       }
       return;
     }
     
     if (result.type === 'timeout') {
       console.log('🔊 Timeout, giving voice feedback NOW');
+      await new Promise(r => setTimeout(r, 800));
       stop();
-      await speak("No valid set detected after 30 seconds. Please tap again and say something like: Leg Press, 160 pounds, for 10 reps.");
+      try {
+        await speak("No valid set detected after 30 seconds. Please tap again and say something like: Leg Press, 160 pounds, for 10 reps.");
+        console.log('🔊 Timeout speak completed');
+      } catch (err) {
+        console.error('🔊 Timeout speak FAILED:', err);
+      }
       return;
     }
     
     if (result.type === 'error') {
       console.log('🔊 Error, giving voice feedback NOW');
+      await new Promise(r => setTimeout(r, 800));
       stop();
-      await speak("Oops, something went wrong with the recording. Let's try again.");
+      try {
+        await speak("Oops, something went wrong with the recording. Let's try again.");
+        console.log('🔊 Error speak completed');
+      } catch (err) {
+        console.error('🔊 Error speak FAILED:', err);
+      }
       return;
     }
     
