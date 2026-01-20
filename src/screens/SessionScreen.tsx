@@ -186,7 +186,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
       
       await runAudioTask(async () => {
         try {
-          await speakWithIndicator('Thanks, logged it.');
+          await speakWithIndicator('Okay, logged it.');
         } catch (err) {
           console.warn('TTS log confirmation error:', err);
         }
@@ -209,7 +209,7 @@ export default function SessionScreen({ onNavigate }: SessionScreenProps) {
     console.log('rejectSetAndConfirm called');
     await runAudioTask(async () => {
       try {
-        await speakWithIndicator('Okay gotcha, not logged it.');
+        await speakWithIndicator('Okay, not logged it.');
       } catch (err) {
         console.warn('TTS reject confirmation error:', err);
       }
